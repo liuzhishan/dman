@@ -1,0 +1,11 @@
+server:
+  addr: localhost
+  port: 8072
+db:
+  url: root:@tcp(localhost:3306)/dman?charset=utf8
+  host: localhost
+  username: root
+  password: ""
+  port: 3306
+  dbname: dman
+
