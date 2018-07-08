@@ -29,7 +29,7 @@ import (
 	"os"
 )
 
-func apply(dbkey, appkey, workername, info string) bool {
+func Apply(dbkey, appkey, workername, info string) bool {
 	reqUrl := fmt.Sprintf("%s/apply?dbkey=%s&appkey=%s", getBaseUrl(), dbkey, appkey)
 	data := url.Values{"workername": {workername}, "info": {info}}
 	resp, err := http.PostForm(reqUrl, data)
@@ -50,7 +50,7 @@ func apply(dbkey, appkey, workername, info string) bool {
 	return false
 }
 
-func check(dbkey, appkey string) (err error, res interface{}) {
+func Check(dbkey, appkey string) bool {
 	privateKey := getPrivateKey()
 	publicKey := getPublicKey()
 
@@ -59,20 +59,20 @@ func check(dbkey, appkey string) (err error, res interface{}) {
 	resp, err := http.PostForm(reqUrl, data)
 	if err != nil {
 		logInfo(err.Error())
-		return err, res
+		return false
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		logInfo(err.Error())
-		return
+		return false
 	}
 
 	jsonObj, err := gabs.ParseJSON(bodyBytes)
 	if err != nil {
 		logInfo(err.Error())
-		return err, jsonObj.Data()
+		return false
 	}
 
 	secretkey, ok := jsonObj.Path("key").Data().(string)
@@ -80,20 +80,21 @@ func check(dbkey, appkey string) (err error, res interface{}) {
 		decoded, err := hex.DecodeString(secretkey)
 		if err != nil {
 			logInfo(err.Error())
-			return err, nil
+			return false
 		}
 
 		dekey, err := RsaDecrypt(decoded, privateKey)
 		if err != nil {
 			logInfo(err.Error())
 			logInfo(string(secretkey))
-			return err, nil
+			return false
 		}
 		storeKey(concatDbkeyAppkey(dbkey, appkey), string(dekey))
+		return true
 	}
 
 	logInfo("%t", jsonObj.Path("isSuccess").Data().(bool))
-	return nil, jsonObj.Data()
+	return false
 }
 
 func storeKey(k, v string) {
@@ -138,7 +139,7 @@ func concatDbkeyAppkey(dbkey, appkey string) string {
 	return fmt.Sprintf("%s|%s", dbkey, appkey)
 }
 
-func getDbinfo(dbkey, appkey string) (err error, dbinfo Dbinfo) {
+func GetDbinfo(dbkey, appkey string) (err error, dbinfo Dbinfo) {
 	secretKey := getKeyFromFile(concatDbkeyAppkey(dbkey, appkey))
 	privateKey := getPrivateKey()
 	publicKey := getPublicKey()
@@ -183,10 +184,10 @@ func getDbinfo(dbkey, appkey string) (err error, dbinfo Dbinfo) {
 	return errors.New("no content"), dbinfo
 }
 
-func getDbConnection(dbkey string, appkey string) (error, *sql.DB) {
+func GetDbConnection(dbkey string, appkey string) (error, *sql.DB) {
 	var db *sql.DB
 
-	err, dbinfo := getDbinfo(dbkey, appkey)
+	err, dbinfo := GetDbinfo(dbkey, appkey)
 	if err != nil {
 		logInfo(err.Error())
 		return err, db
@@ -223,7 +224,7 @@ var applyCmd = &cobra.Command{
 			info = args[3]
 		}
 
-		apply(args[0], args[1], workername, info)
+		Apply(args[0], args[1], workername, info)
 	},
 }
 
@@ -233,7 +234,7 @@ var checkCmd = &cobra.Command{
 	Long:  "check dbkey for appkey, if success, get key",
 	Args:  cobra.MinimumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		check(args[0], args[1])
+		Check(args[0], args[1])
 	},
 }
 
@@ -243,7 +244,7 @@ var getDbinfoCmd = &cobra.Command{
 	Long:  "getDbinfo for dbkey and appkey",
 	Args:  cobra.MinimumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		getDbinfo(args[0], args[1])
+		GetDbinfo(args[0], args[1])
 	},
 }
 
@@ -253,7 +254,7 @@ var getDbConnectionCmd = &cobra.Command{
 	Long:  "open db for dbkey and appkey",
 	Args:  cobra.MinimumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		getDbConnection(args[0], args[1])
+		GetDbConnection(args[0], args[1])
 	},
 }
 
