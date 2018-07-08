@@ -15,17 +15,18 @@
 package cmd
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Jeffail/gabs"
+	"github.com/julienschmidt/httprouter"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/julienschmidt/httprouter"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 type (
@@ -41,10 +42,8 @@ func mainHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func applyHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	if err := r.ParseForm(); err != nil {
-		fmt.Fprintf(w, "ParseForm() err: %v", err)
+		writeJSON(w, map[string]interface{}{"isSuccess": false, "message": fmt.Sprintf("ParseForm err: %v", err)})
 		return
 	}
 
@@ -69,10 +68,8 @@ func applyHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func checkHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	if err := r.ParseForm(); err != nil {
-		fmt.Fprintf(w, "ParseForm() err: %v", err)
+		writeJSON(w, map[string]interface{}{"isSuccess": false, "message": fmt.Sprintf("ParseForm err: %v", err)})
 		return
 	}
 
@@ -86,8 +83,43 @@ func checkHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		logInfo(err.Error())
 		writeJSON(w, map[string]interface{}{"isSuccess": false, "key": ""})
 	} else {
-		writeJSON(w, map[string]interface{}{"isSuccess": isSuccess, "key": enkey})
+		encodedStr := hex.EncodeToString(enkey)
+		writeJSON(w, map[string]interface{}{"isSuccess": isSuccess, "key": encodedStr})
 	}
+}
+
+func getDbinfoHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, map[string]interface{}{"isSuccess": false, "message": fmt.Sprintf("ParseForm err: %v", err)})
+		return
+	}
+
+	dbkey := r.FormValue("dbkey")
+	appkey := r.FormValue("appkey")
+	pub := []byte(r.FormValue("pub"))
+	vcode := r.FormValue("vcode")
+
+	isSuccess, username, info := checkAccess(dbkey, appkey, vcode)
+	if !isSuccess {
+		logInfo("no access!!! reason: %s", info)
+		writeJSON(w, map[string]interface{}{"isSuccess": false, "message": fmt.Sprintf("no access!!! reason: %s", info)})
+		return
+	}
+
+	err, dbinfo := getDbinfoByDbkey(dbkey, username)
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	obj, _ := gabs.Consume(dbinfo)
+	encryptedObj, err := RsaEncrypt([]byte(obj.String()), pub)
+	if err != nil {
+		logInfo(err.Error())
+		fmt.Fprintf(w, err.Error())
+		return
+	}
+
+	encodedStr := hex.EncodeToString(encryptedObj)
+	writeJSON(w, map[string]interface{}{"isSuccess": true, "content": encodedStr})
 }
 
 func writeJSON(w http.ResponseWriter, obj interface{}) {
@@ -110,6 +142,7 @@ func NewServer() (*Server, error) {
 	router.GET("/", mainHandler)
 	router.POST("/apply", applyHandler)
 	router.POST("/check", checkHandler)
+	router.POST("/getDbinfo", getDbinfoHandler)
 
 	srv := &Server{
 		addr: fmt.Sprintf("%s:%d", viper.GetString("server.addr"), viper.GetInt("server.port")),

@@ -1,20 +1,26 @@
 package cmd
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/Jeffail/gabs"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/spf13/viper"
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
+	"net/url"
 	"path/filepath"
 	_ "reflect"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var db *sql.DB
@@ -37,17 +43,17 @@ func getBaseUrl() string {
 	return fmt.Sprintf("http://%s:%d", viper.GetString("server.addr"), viper.GetInt("server.port"))
 }
 
-func openDb() *sql.DB {
-	db, err := sql.Open("mysql", viper.GetString("db.url"))
+func openDb(dbUrl string) (err error, db *sql.DB) {
+	db, err = sql.Open("mysql", dbUrl)
+	err = db.Ping()
 	if err != nil {
-		panic(err.Error())
+		return err, db
 	}
 
 	db.SetMaxOpenConns(2000)
 	db.SetMaxIdleConns(1000)
-	db.Ping()
-	logInfo("get db connection success! dbname: %s", viper.GetString("db.dbname"))
-	return db
+	logInfo("get db connection success!")
+	return nil, db
 }
 
 func getSqlResult(s string, params []interface{}, example []interface{}) (err error, rows [][]interface{}) {
@@ -180,21 +186,43 @@ func showApply(pattern string) {
 	}
 }
 
-func approveApply(applyids string) {
-	for _, applyid := range strings.Split(applyids, ",") {
-		s := "update user_apply set status = 1, secretkey = ? where applyid = ?"
-		key := randStr(32)
-		x, err := strconv.Atoi(applyid)
-		if err != nil {
-			logInfo(err.Error())
-			continue
-		}
-		params := []interface{}{key, x}
-		err = executeSql(s, params)
-		if err != nil {
-			logInfo(err.Error())
+func isUsernameExists(username string) bool {
+	s := "select count(1) from dbaccount where username = ?"
+	params := []interface{}{username}
+	err, rows := getSqlResult(s, params, []interface{}{0})
+	if err != nil {
+		logInfo(err.Error())
+		return false
+	}
+
+	return rows[0][0].(int64) > 0
+}
+
+func approveApply(applys []string) {
+	for _, s := range applys {
+		splitted := strings.Split(s, ",")
+		if len(splitted) == 2 {
+			applyidStr, username := splitted[0], splitted[1]
+			applyid, err := strconv.Atoi(applyidStr)
+			if err != nil {
+				logInfo("error! applyid must be int, %s", err.Error())
+				continue
+			}
+			if !isUsernameExists(username) {
+				logInfo("error! username not exists!!!")
+				continue
+			}
+			s := "update user_apply set status = 1, secretkey = ?, username = ? where applyid = ?"
+			key := randStr(32)
+			params := []interface{}{key, username, applyid}
+			err = executeSql(s, params)
+			if err != nil {
+				logInfo(err.Error())
+			} else {
+				logInfo("approve success, applyid = %d, username = %s", applyid, username)
+			}
 		} else {
-			logInfo("approve success, applyid = %d", x)
+			logInfo("wrong format, must be applyid,username")
 		}
 	}
 }
@@ -218,4 +246,82 @@ func randStr(len int) string {
 	rand.Read(buff)
 	str := base64.StdEncoding.EncodeToString(buff)
 	return str[:len]
+}
+
+func sendGet(reqUrl string) (err error, res interface{}) {
+	return
+}
+
+func sendPost(reqUrl string, data url.Values) (err error, res interface{}) {
+	resp, err := http.PostForm(reqUrl, data)
+	if err != nil {
+		logInfo(err.Error())
+		return err, res
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		logInfo(err.Error())
+		return err, res
+	}
+
+	jsonObj, err := gabs.ParseJSON(bodyBytes)
+	if err != nil {
+		logInfo(err.Error())
+		return err, res
+	}
+
+	return nil, jsonObj.Data()
+}
+
+func genVerifyCode(secretKey string) string {
+	h := sha256.New()
+	h.Write([]byte(fmt.Sprintf("%s%d", secretKey, time.Now().Unix()/30)))
+	x := binary.BigEndian.Uint64(h.Sum(nil)[:8])
+
+	res := fmt.Sprintf("%06d", x%1000000)
+	return res
+}
+
+func checkAccess(dbkey, appkey, vcode string) (isSuccess bool, username string, info string) {
+	s := "select status, coalesce(secretkey, ''), coalesce(username, '') from user_apply where dbkey = ? and appkey = ?"
+	params := []interface{}{dbkey, appkey}
+
+	err, rows := getSqlResult(s, params, []interface{}{0, "", ""})
+	if err != nil {
+		return false, "", "error when get key"
+	} else if len(rows) == 0 {
+		return false, "", "no such dbkey for appkey"
+	} else if rows[0][0].(int64) == 0 {
+		return false, "", "not ready, waiting for approve, please contact dba"
+	} else if rows[0][0].(int64) == 1 {
+		secretKey := string(rows[0][1].([]byte))
+		username := string(rows[0][2].([]byte))
+		if genVerifyCode(secretKey) != vcode {
+			return false, "", "wrong verify code"
+		} else {
+			return true, username, ""
+		}
+	} else {
+		return false, "", ""
+	}
+}
+
+func getDbinfoByDbkey(dbkey string, username string) (err error, dbinfo map[string]interface{}) {
+	s := "select hostname, dbname, password, port from dbaccount where dbkey = ? and username = ?"
+	params := []interface{}{dbkey, username}
+	err, rows := getSqlResult(s, params, []interface{}{"", "", "", 0})
+	if err != nil {
+		return err, dbinfo
+	}
+
+	dbinfo = map[string]interface{}{"dbkey": dbkey, "username": username}
+	dbinfo["hostname"] = string(rows[0][0].([]byte))
+	dbinfo["dbname"] = string(rows[0][1].([]byte))
+	dbinfo["password"] = string(rows[0][2].([]byte))
+	dbinfo["port"] = rows[0][3].(int64)
+
+	logInfo("success, hostname: %s, dbname: %s, port: %d", dbinfo["hostname"], dbinfo["dbname"], dbinfo["port"])
+	return nil, dbinfo
 }

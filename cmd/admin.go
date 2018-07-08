@@ -62,12 +62,12 @@ var showApplyCmd = &cobra.Command{
 }
 
 var approveApplyCmd = &cobra.Command{
-	Use:   "approveApply [applyids]",
-	Short: "approve apply",
-	Long:  "approve apply",
+	Use:   "approveApply [applyid,username] [applyid1,username1] ...",
+	Short: "approve apply with username",
+	Long:  "approve apply with username",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		approveApply(args[0])
+		approveApply(args)
 	},
 }
 

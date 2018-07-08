@@ -85,6 +85,11 @@ func initConfig() {
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
-		db = openDb()
+		err, db = openDb(viper.GetString("db.url"))
+		err = db.Ping()
+		if err != nil {
+			logInfo("get db error!!!, %v", err.Error())
+			os.Exit(1)
+		}
 	}
 }
