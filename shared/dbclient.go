@@ -17,14 +17,13 @@ func CCheck(dbkey, appkey string) bool {
 }
 
 //export CGetDbinfo
-func CGetDbinfo(dbkey, appkey string) (status int, dbkey1, hostname, dbname, username, password string, port int) {
-	dbkey1 = dbkey
+func CGetDbinfo(dbkey, appkey string) (status int, dbkey1, hostname, dbname, username, password *C.char, port int) {
 	err, dbinfo := cmd.GetDbinfo(dbkey, appkey)
 	if err != nil {
-		return status, dbkey1, hostname, dbname, username, password, port
+		return
 	}
 
-	return 1, dbinfo.Dbkey, dbinfo.Hostname, dbinfo.Dbname, dbinfo.Username, dbinfo.Password, int(dbinfo.Port)
+	return 1, C.CString(dbinfo.Dbkey), C.CString(dbinfo.Hostname), C.CString(dbinfo.Dbname), C.CString(dbinfo.Username), C.CString(dbinfo.Password), int(dbinfo.Port)
 }
 
 func main() {

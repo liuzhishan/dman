@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/Jeffail/gabs"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/spf13/viper"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -23,7 +22,11 @@ import (
 	"time"
 )
 
-var db *sql.DB
+var (
+	serverAddr = "localhost"
+	serverPort = 8072
+	db         *sql.DB
+)
 
 func logInfo(formating string, args ...interface{}) {
 	filename, line, funcname := "???", 0, "???"
@@ -40,7 +43,7 @@ func logInfo(formating string, args ...interface{}) {
 }
 
 func getBaseUrl() string {
-	return fmt.Sprintf("http://%s:%d", viper.GetString("server.addr"), viper.GetInt("server.port"))
+	return fmt.Sprintf("http://%s:%d", serverAddr, serverPort)
 }
 
 func openDb(dbUrl string) (err error, db *sql.DB) {

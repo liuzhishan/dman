@@ -72,11 +72,11 @@ extern GoUint8 CCheck(GoString p0, GoString p1);
 /* Return type for CGetDbinfo */
 struct CGetDbinfo_return {
 	GoInt r0; /* status */
-	GoString r1; /* dbkey1 */
-	GoString r2; /* hostname */
-	GoString r3; /* dbname */
-	GoString r4; /* username */
-	GoString r5; /* password */
+	char* r1; /* dbkey1 */
+	char* r2; /* hostname */
+	char* r3; /* dbname */
+	char* r4; /* username */
+	char* r5; /* password */
 	GoInt r6; /* port */
 };
 
