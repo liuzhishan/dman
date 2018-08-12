@@ -41,6 +41,8 @@ func mainHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
 }
 
+// Handles application request.
+// db use should apply new dbkey when the need to use a db connect.
 func applyHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if err := r.ParseForm(); err != nil {
 		writeJSON(w, map[string]interface{}{"isSuccess": false, "message": fmt.Sprintf("ParseForm err: %v", err)})
@@ -67,6 +69,7 @@ func applyHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	writeJSON(w, map[string]interface{}{"isSuccess": true, "message": "success, wait for admin"})
 }
 
+// Check if an application has been approved by the admin.
 func checkHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if err := r.ParseForm(); err != nil {
 		writeJSON(w, map[string]interface{}{"isSuccess": false, "message": fmt.Sprintf("ParseForm err: %v", err)})
@@ -88,6 +91,7 @@ func checkHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 }
 
+// Return the db acount for the appkey.
 func getDbinfoHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if err := r.ParseForm(); err != nil {
 		writeJSON(w, map[string]interface{}{"isSuccess": false, "message": fmt.Sprintf("ParseForm err: %v", err)})
@@ -137,6 +141,7 @@ func logRequest(handler http.Handler) http.Handler {
 	})
 }
 
+// http server that handles all request.
 func NewServer() (*Server, error) {
 	router := httprouter.New()
 	router.GET("/", mainHandler)
@@ -217,14 +222,4 @@ var serverCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// serverCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// serverCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

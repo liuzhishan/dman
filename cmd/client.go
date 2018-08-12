@@ -29,6 +29,7 @@ import (
 	"os"
 )
 
+// Apply a dbkey for an appkey.
 func Apply(dbkey, appkey, workername, info string) bool {
 	reqUrl := fmt.Sprintf("%s/apply?dbkey=%s&appkey=%s", getBaseUrl(), dbkey, appkey)
 	data := url.Values{"workername": {workername}, "info": {info}}
